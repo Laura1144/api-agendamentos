@@ -1,0 +1,49 @@
+generator cliente {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Cliente {
+  id       Int    @id @default(autoincrement())
+  nome     String
+  email    String @unique
+  telefone String
+
+  agendas Agenda[]
+}
+
+model Profissional {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+  nome  String
+
+  agendas Agenda[]
+}
+
+model Servico {
+  id        Int    @id @default(autoincrement())
+  nome      String
+  descricao String
+  valor     String
+
+  agendas Agenda[]
+}
+
+model Agenda {
+  id     Int      @id @default(autoincrement())
+  data   DateTime
+  status String   @default("agendado")
+  valor  String
+
+  servicoId      Int
+  profissionalId Int
+  clienteId      Int
+
+  servico      Servico      @relation(fields: [servicoId], references: [id])
+  profissional Profissional @relation(fields: [profissionalId], references: [id])
+  cliente      Cliente      @relation(fields: [clienteId], references: [id])
+}

@@ -4,6 +4,7 @@ import { ServicoController } from "./src/Controllers/ServicoController.js";
 import { ProfissionalController } from "./src/Controllers/ProfissionalController.js";
 import { AgendaController } from "./src/Controllers/AgendaController.js";
 
+
 const app = express();
 app.use(express.json());
 

@@ -15,8 +15,7 @@
     "test:integration": "vitest run -t integra",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "vercel-build": "prisma generate",
-    "postinstall": "prisma skills sync || exit 0"
+    "vercel-build": "prisma generate && tsc -p tsconfig.build.json"
   },
   "keywords": [
     "api",

@@ -8,42 +8,44 @@ datasource db {
 }
 
 model Cliente {
-  id       Int    @id @default(autoincrement())
-  nome     String
-  email    String @unique
-  telefone String
+  id       String @id @default(uuid()) @db.Char(36)
+  nome     String @db.VarChar(100)
+  email    String @unique @db.VarChar(150)
+  telefone String @db.VarChar(20)
 
   agendas Agenda[]
 }
 
 model Profissional {
-  id    Int    @id @default(autoincrement())
-  email String @unique
-  nome  String
+  id    String @id @default(uuid()) @db.Char(36)
+  nome  String @db.VarChar(100)
+  email String @unique @db.VarChar(150)
 
   agendas Agenda[]
 }
 
 model Servico {
-  id        Int    @id @default(autoincrement())
-  nome      String
-  descricao String
-  valor     String
+  id        String  @id @default(uuid()) @db.Char(36)
+  nome      String  @unique @db.VarChar(100)
+  descricao String  @db.VarChar(255)
+  valor     Decimal @db.Decimal(10, 2)
 
   agendas Agenda[]
 }
 
 model Agenda {
-  id     Int      @id @default(autoincrement())
+  id     String   @id @default(uuid()) @db.Char(36)
   data   DateTime
-  status String   @default("agendado")
-  valor  String
+  status String   @default("agendado") @db.VarChar(20)
+  valor  Decimal  @db.Decimal(10, 2)
 
-  servicoId      Int
-  profissionalId Int
-  clienteId      Int
+  servicoId      String @db.Char(36)
+  profissionalId String @db.Char(36)
+  clienteId      String @db.Char(36)
 
-  servico      Servico      @relation(fields: [servicoId], references: [id])
-  profissional Profissional @relation(fields: [profissionalId], references: [id])
-  cliente      Cliente      @relation(fields: [clienteId], references: [id])
+  servico      Servico      @relation(fields: [servicoId], references: [id], onDelete: Restrict)
+  profissional Profissional @relation(fields: [profissionalId], references: [id], onDelete: Restrict)
+  cliente      Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+
+  @@index([profissionalId, data])
 }

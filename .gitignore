@@ -1,4 +1,10 @@
 node_modules/
-.env
 dist/
 src/generated/
+coverage/
+
+# Variáveis de ambiente com credenciais reais (use .env.example e .env.test.example)
+.env
+.env.test
+.env.local
+.vercel

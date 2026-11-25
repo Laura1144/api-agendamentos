@@ -571,19 +571,80 @@ A coleção cria cliente, profissional, serviço e agendamento, guarda os ids em
 
 A Vercel roda a API como função serverless, então ela **não acessa o MySQL do seu computador**. É preciso um banco MySQL na nuvem. O projeto já está preparado: `src/app.ts` exporta o app (`export default app`), o script `vercel-build` gera o Prisma Client, o Swagger carrega os arquivos por CDN e a variável `DB_SSL` liga o SSL na conexão.
 
-1. **Crie um banco MySQL na nuvem** em um provedor como [Aiven](https://aiven.io/mysql), [TiDB Cloud](https://tidbcloud.com/) ou [Railway](https://railway.com/). Anote o host, a porta, o usuário, a senha e o nome do banco.
-2. **Crie as tabelas nesse banco:** no seu computador, rode as migrations apontando para ele.
+> O Docker é usado **só no desenvolvimento local**. Não é preciso conta no Docker nem nenhum container rodando para o deploy: a Vercel conecta direto em um banco MySQL hospedado na nuvem.
 
-   ```bash
-   # PowerShell
-   $env:DATABASE_URL="mysql://USUARIO:SENHA@HOST:PORTA/BANCO?sslaccept=strict"; npx prisma migrate deploy
-   ```
+### 1. Criar o banco MySQL online (Aiven)
 
-3. **Envie o código para o GitHub** (`git push`).
-4. Na [Vercel](https://vercel.com/new), clique em **Add New → Project** e importe o repositório `api-agendamentos`. O preset **Express** é detectado automaticamente.
-5. Em **Environment Variables**, cadastre `DATABASE_URL`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (com os dados do banco na nuvem) e `DB_SSL=true`.
-6. Clique em **Deploy**. Depois, acesse `https://SEU-PROJETO.vercel.app/api-docs`.
+O projeto usa o [Aiven for MySQL](https://aiven.io/mysql), que tem plano gratuito. Outras opções compatíveis são [TiDB Cloud](https://tidbcloud.com/) e [Railway](https://railway.com/).
+
+1. Crie uma conta em [console.aiven.io](https://console.aiven.io/) e clique em **Create service → MySQL**, escolhendo o plano **Free**.
+2. Aguarde o status do serviço mudar de **Rebuilding** para **Running**. Isso leva alguns minutos, e antes disso a conexão falha com `P1001: Can't reach database server`.
+3. Na aba **Overview**, em **Connection information**, anote:
+
+   | Campo no Aiven | Variável do projeto |
+   | --- | --- |
+   | Host | `DB_HOST` |
+   | Port | `DB_PORT` |
+   | User (`avnadmin`) | `DB_USER` |
+   | Password | `DB_PASSWORD` |
+   | Database name (`defaultdb`) | `DB_NAME` |
+
+4. Confira em **Allowed IP addresses** se o acesso está liberado (`0.0.0.0/0`, que é o padrão). A Vercel não tem IP fixo.
+
+> **Nunca coloque a senha do banco em arquivos versionados** (README, código, `.env.example`). Ela fica apenas no `.env` local, que está no `.gitignore`, e nas variáveis de ambiente da Vercel.
+
+### 2. Criar as tabelas no banco online
+
+As migrations são aplicadas **a partir do seu computador**, porque o build da Vercel só gera o Prisma Client e não cria tabelas. No PowerShell, defina a `DATABASE_URL` do banco online apenas para aquela janela do terminal e rode as migrations:
+
+```powershell
+$env:DATABASE_URL="mysql://USUARIO:SENHA@HOST:PORTA/defaultdb?sslaccept=accept_invalid_certs"
+npm run db:migrate
+```
+
+- A variável definida no terminal tem prioridade sobre o `.env` (o `dotenv` não sobrescreve variáveis já existentes), então o `.env` local continua apontando para o Docker.
+- O parâmetro de SSL do Prisma é `sslaccept`, e não o `ssl-mode=REQUIRED` que o Aiven mostra na connection string. Use `accept_invalid_certs` porque o Aiven assina o certificado com uma CA própria. A conexão continua criptografada.
+- Caracteres especiais da senha precisam de URL encoding (`@` → `%40`, `#` → `%23`, `/` → `%2F`).
+- Deu certo quando aparecer `All migrations have been successfully applied`.
+
+### 3. Configurar a conexão SSL da aplicação
+
+Com `DB_SSL=true`, o `src/lib/prisma.ts` liga o SSL no adapter do MariaDB. Como o certificado do Aiven é assinado por uma CA própria, a verificação padrão (`rejectUnauthorized: true`) recusa a conexão. Escolha uma das opções:
+
+- **Simples:** usar `ssl: { rejectUnauthorized: false }`. A conexão continua criptografada, mas sem validar quem assinou o certificado.
+- **Recomendada:** baixar o **CA certificate** no painel do Aiven, salvar o conteúdo dele em uma variável de ambiente (por exemplo `DB_CA_CERT`) e usar `ssl: { ca: process.env.DB_CA_CERT }`.
+
+### 4. Publicar na Vercel
+
+1. **Envie o código para o GitHub** (`git push`).
+2. Na [Vercel](https://vercel.com/new), clique em **Add New → Project** e importe o repositório `api-agendamentos`. O preset **Express** é detectado automaticamente.
+3. Em **Settings → Environment Variables**, cadastre as variáveis com os dados do Aiven:
+
+   | Variável | Valor |
+   | --- | --- |
+   | `DB_HOST` | host do Aiven (`mysql-xxxx.aivencloud.com`) |
+   | `DB_PORT` | porta do Aiven |
+   | `DB_USER` | `avnadmin` |
+   | `DB_PASSWORD` | senha do Aiven |
+   | `DB_NAME` | `defaultdb` |
+   | `DB_SSL` | `true` |
+
+   A `DATABASE_URL` não é necessária na Vercel: ela só é usada pela CLI do Prisma (migrations), e a aplicação conecta pelas variáveis `DB_*`.
+4. Clique em **Deploy**. Variáveis novas ou alteradas só valem depois de um novo deploy (**Deployments → ⋯ → Redeploy**).
+5. Em **Settings → Deployment Protection**, desative a **Vercel Authentication** para que a API e o Swagger fiquem públicos. Sem isso, quem não está logado na sua conta recebe uma tela de login.
+6. Acesse `https://SEU-PROJETO.vercel.app/api-docs`. Use o domínio de produção (em **Domains**), porque cada deploy também gera uma URL própria que muda a cada push.
 7. Para testar com o Postman, troque a variável `baseUrl` da coleção pela URL da Vercel.
+
+### Problemas comuns
+
+| Sintoma | Causa provável |
+| --- | --- |
+| `GET /` funciona, mas `/clientes` etc. retornam `500 Erro interno do servidor.` | A API não conecta no banco: variáveis `DB_*` ausentes ou erradas, ou erro de certificado SSL (veja o passo 3). |
+| `P1001: Can't reach database server` ao rodar as migrations | Serviço do Aiven ainda não está **Running**, IP bloqueado ou rede (por exemplo, a da faculdade) bloqueando a porta. |
+| Tela "Protected by Vercel Authentication" | Deployment Protection ativa (veja o passo 4.5). |
+| `DEPLOYMENT_NOT_FOUND` | A URL é de um deploy ou projeto que não existe mais. Pegue a URL atual no painel. |
+
+Para descobrir a causa exata de um erro 500, abra **Deployments → (último deploy) → Logs** na Vercel e procure a linha `Erro inesperado:`, que é registrada pelo `errorHandler`.
 
 ---
 
